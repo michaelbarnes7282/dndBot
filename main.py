@@ -104,6 +104,7 @@ async def once_done(sink: discord.sinks, channel: discord.TextChannel):
         save_as_docx(transcription, docx_filename)
 
         await channel.send(file=discord.File(docx_filename))
+        os.remove(docx_filename)
 
 
 @bot.command()
