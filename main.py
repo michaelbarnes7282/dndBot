@@ -68,43 +68,46 @@ async def record(ctx):
 
 async def once_done(sink: discord.sinks, channel: discord.TextChannel):
     await channel.send("Processing recordings...")
+    transcription = await process_audio_and_transcribe(sink)
+    docx_filename = await save_transcription_to_docx(transcription)
+    await send_docx_to_channel(channel, docx_filename)
+
+
+async def process_audio_and_transcribe(sink: discord.sinks):
     mention_strs = []
     audio_segs: list[pydub.AudioSegment] = []
-    files: list[discord.File] = []
-
     longest = pydub.AudioSegment.empty()
 
     for user_id, audio in sink.audio_data.items():
         mention_strs.append(F"<@{user_id}>")
-
         seg = pydub.AudioSegment.from_file(audio.file, format="mp3")
-
-        # Determine the longest audio segment
         if len(seg) > len(longest):
             audio_segs.append(longest)
             longest = seg
-
         else:
             audio_segs.append(seg)
-
         audio.file.seek(0)
-        files.append(discord.File(audio.file, filename=f"{user_id}.mp3"))
 
     for seg in audio_segs:
         longest = longest.overlay(seg)
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
+    with tempfile.NamedTemporaryFile(suffix=".mp3") as temp_file:
         longest.export(temp_file.name, format="mp3")
-        audio_path = temp_file.name
+        transcription = transcribe_audio(temp_file.name)
 
-        transcription = transcribe_audio(audio_path)
-        os.remove(audio_path)
+    return transcription
 
-        docx_filename = 'session_notes.docx'
-        save_as_docx(transcription, docx_filename)
 
-        await channel.send(file=discord.File(docx_filename))
-        os.remove(docx_filename)
+async def save_transcription_to_docx(transcription):
+    docx_filename = 'session_notes.docx'
+    save_as_docx({'Transcription': transcription}, docx_filename)
+    return docx_filename
+
+
+async def send_docx_to_channel(channel: discord.TextChannel,
+                               docx_filename: str):
+    await channel.send(file=discord.File(docx_filename))
+    os.remove(docx_filename)
 
 
 @bot.command()
